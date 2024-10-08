@@ -22,18 +22,21 @@ class DCMTrajectoryGenerator:
         self.planDCMTrajectory(time) #Plan DCM trajectory 
         return np.array(self.DCM)
 
-
+    # 通过积分 CoM 的速度
+    # 生成 CoM 的轨迹
+    # 使用 公式(3) x' = ω·(ξ-x)
     def getCoM(self):
         #This function generates the CoM trajectory by integration of CoM velocity(that has been found by the DCM values)
-        self.CoMDot= #todo: use equation (3) in the project description
-        self.CoM=  #todo: Simple euler numerical integration
-        self.CoMDotPrev=self.CoMDot
+        self.CoMDot = self.omega * (self.DCM - self.CoM)   #TODO: use equation (3) in the project description
+        self.CoM =  self.CoM + self.CoMDot * self.timeStep #TODO: Simple euler numerical integration
+        self.CoMDotPrev = self.CoMDot
         return self.CoM
 
-    
+    # 返回 DCM 的位置
+    # 使用 公式(9) ξ = (ξ0 - CoP0)·exp(ω·t) + CoP0
     def planDCMTrajectory(self,time): #The output of this function is DCM posiiton
-        #todo: use the equation 9 of the project description
-        self.DCM = 
+        #TODO: use the equation 9 of the project description
+        self.DCM = (self.initialDCM - self.CoP) * np.exp(self.omega * time) + self.CoP
         pass
 
     

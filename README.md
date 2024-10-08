@@ -1,5 +1,6 @@
-# Legged-Locomotion
+[English Version](./README.md) |  [中文版](./README-CN.md)
 
+# Legged-Locomotion
 
 # DCM Bipedal Locomotion
 This repository contains an environment for the first mini-project.
@@ -41,3 +42,6 @@ You sould see the following output:
 ## Using code
 - First activate the python virtual environment.
 - Run `jupyter notebook` and open the DCM-Locomotion.ipynb
+
+## Common Errors
+<img src="Picture/Index error.png" width="90%"/>
