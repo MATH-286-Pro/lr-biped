@@ -43,3 +43,15 @@
         $$ \dot{x}_{CoM} = \omega (x_{DCM}-x_{CoM}) $$
         $$ x_{CoM}(t+dt) = x_{CoM}(t) + \dot{x}_{CoM} \cdot dt $$
     - def planDCMTrajectory(self,time):
+
+## 4.测试日志
+- **2024.10.8 周二**
+  - 发现 Part2 循环中 if 判断条件实际应该为 if(dt*internalStep>stepDuration):
+  - 机器人可以行走3步
+  - 发现机器人在 y 方向上会摔倒
+- **2024.10.15 周二**
+  - 问题分析：什么原因导致摔倒，并且是 Y 方向摔倒
+    - X 方向似乎正常
+    - [x] 检查矩阵
+    - [ ] 检查凸优化过程
+    - 根据图像发现 第一步 CoP_y 在0.125 左右，完全满足约束条件，说明可能是求解的问题？
