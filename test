@@ -1,0 +1,235 @@
+N CONTROL LOOP :
+
+iter = 0
+box_exists = False
+while True:
+   iter += 1
+   
+   ############################# Camera Following ####################################
+   #FFFFFF Add Camera Following
+   robotPos, robotOrn = p.getBasePositionAndOrientation(robotID)
+
+   # 获取机器人朝向（四元数转换为欧拉角）
+   robotOrnEuler = p.getEulerFromQuaternion(robotOrn)
+
+   # 相机相对于机器人的位移向量（假设相机相对于机器人固定在后方，稍高一点的位置）
+   relative_camera_position = [0, -cameraDistance, 0.5]  # z 轴稍微提高相机视角
+
+   # 使用机器人方向旋转相机位置，使其相对机器人参考系移动
+   rotation_matrix = np.array(p.getMatrixFromQuaternion(robotOrn)).reshape(3, 3)
+   camera_offset = np.dot(rotation_matrix, relative_camera_position)
+
+   # 计算相机的绝对位置
+   camera_position = np.array(robotPos) + camera_offset
+
+   # 重新设置相机，目标始终对准机器人
+   p.resetDebugVisualizerCamera(cameraDistance, cameraYaw, cameraPitch, robotPos)
+   ####################################################################################
+
+   if iter  > 1/dt and iter  < 1/dt + 23:
+      #第一步时间附近施加推力
+      #applying push at the certain period of simulation
+      if box_exists == False:
+         #add box to apply push on the robot
+         gemId = p.loadURDF("boston_box.urdf", [realCoM[0] - 0.78, -0.0, 1.7],  p.getQuaternionFromEuler([0, 0, 0]))
+         gemId2 = p.loadURDF("boston_box.urdf", [realCoM[0] - 0.38, -0.3, 1.4],  p.getQuaternionFromEuler([0, 0, 0]))
+         box_exists = True
+          
+      gemPos, gemOrn = p.getBasePositionAndOrientation(gemId)
+      force = np.array([873 ,0 ,0])
+      p.applyExternalForce(objectUniqueId=gemId, linkIndex=-1,forceObj=force, posObj=gemPos, flags=p.WORLD_FRAME)
+      gemPos2, gemOrn2 = p.getBasePositionAndOrientation(gemId2)
+      force2 = np.array([0 ,1403 ,0])
+      p.applyExternalForce(objectUniqueId=gemId2, linkIndex=-1,forceObj=force2, posObj=gemPos2, flags=p.WORLD_FRAME)
+
+   DesiredDCM   = DCMGenerator.getDCMTrajectory(dt)                            #TODO: get the desired DCM for the next time-step ✔ 
+   DesiredCoM   = DCMGenerator.getCoM()                                        #TODO: get the desired CoM for the next time-step ✔
+   DesiredCoM3d = np.append(DesiredCoM - CoM0[:2] , DCMGenerator.CoMHeight)    #make a 3d vector of com position by appending the com height
+   realCoM,_    = p.getBasePositionAndOrientation(robotID)                     #TODO: receive the base position and orientation (use pybullet documentation for finding the related function) 
+   CoMVel,_     = p.getBaseVelocity(robotID)                                   #TODO: receive the base velocity ✔
+   realDCM      = np.array(realCoM) + np.array(CoMVel) /DCMGenerator.omega     #TODO: calculate real dcm of the robot  ξ = x + x'/ω = x + v/ω ✔
+
+   #We consider for activating push recovery to avoid flunctuation and If DCM error is less than a threshold we will use desired DCM value
+   if np.linalg.norm(DesiredDCM - realDCM[:2]) < 0.2:
+      currentDCM = DesiredDCM
+   else:
+      currentDCM = realDCM[:2]
+
+   DCMRealTrajectory.append(currentDCM)
+   DCMGenerator.initialDCM = np.array([currentDCM[0],currentDCM[1]]) # Re-initializing the DCM generator with the current values. 
+
+   NominalStepDuration = max(0,NominalStepDuration_prev - internalStep * dt) # Nominal step duration is shrinking  as swing foot is going forward until it touches the ground
+
+   alphaCoPX = 1.0
+   alphaCoPY = 1.0
+   alphaSigma = 1.0
+   alphaOffsetX = 1000
+   alphaOffsetY = 1000
+   
+   #CoP Nominal
+   CoPNoMX = NominalStepLength + CoPX           #CoPX is added here to add previous step position to the nominal step length
+   CoPNoMY = 2 * sign*NominalStepWidth + CoPY   #sign parameters switches between right and left foot
+
+   OffsetNoMX = offsetx # + 0.05 * (currentDCM[0] - CoPX)#nominal DCM x offset
+   OffsetNoMY = -1*sign* offsety # nominal DCM  y offset
+
+   duration_max = NominalStepDuration + deltaStepDurationMax
+   duration_min = max(0,NominalStepDuration - deltaStepDurationMin)
+   SigmaNoM =  np.exp(DCMGenerator.omega * NominalStepDuration) #TODO: #nominal sigma (function of NominalStepDuration) 用于控制迈步时长
+
+   #make a boundry limit for the next step position and duration 
+   #TODO: #FFFFFF #FFFFFF #FFFFFFFF
+   GAP = 0.4
+   
+   # 迈步最大距离
+   CoPTMaxX = CoPNoMX+GAP  #TODO next step position maximum constraits for x, add a value and tune it to have simulation working 最大迈步X
+   CoPTMaxY = CoPNoMY+GAP  #TODO next step position maximum constraits for y, add a value and tune it to have simulation working 最大迈步Y
+   
+   # 迈步最小距离
+   CoPTMinX = CoPNoMX-GAP  #TODO next step position minimum constrait for x, add a value and tune it to have simulation working 最小迈步X
+   CoPTMinY = CoPNoMY-GAP  #TODO next step position minimum constrait for y, add a value and tune it to have simulation working 最小迈步Y
+   
+   #0000FF 迈步时长范围 测试
+   SigmaMin = np.exp(DCMGenerator.omega * (duration_min))                                  #TODO: ✔ use NominalStepDuration and deltaStepDurationMin 最小迈步时长
+   SigmaMax = np.exp(DCMGenerator.omega * (duration_max))                                  #TODO: ✔ use NominalStepDuration and deltaStepDurationMax 最大迈步时长
+
+   DCMGenerator.CoP = np.array([CoPX ,CoPY]) #update the initial CoP position in the DCMTrajectoryGenerator
+   
+
+   # TODO: use equation 14 and 16 to find the P and Q 
+   #0000FF 代价函数 #0000FF
+   P = np.array([[2*alphaCoPX,0,0,0,0],
+                 [0,2*alphaCoPY,0,0,0],
+                 [0,0,2*alphaSigma,0,0],
+                 [0,0,0,2*alphaOffsetX,0],
+                 [0,0,0,0,2*alphaOffsetY]])
+   q = np.array([[-2*alphaCoPX*CoPNoMX],
+                 [-2*alphaCoPY*CoPNoMY],
+                 [-2*alphaSigma*SigmaNoM],
+                 [-2*alphaOffsetX*OffsetNoMX],
+                 [-2*alphaOffsetY*OffsetNoMY]]) 
+
+   # TODO: use equation 15 and 16 to find the G and h 
+   #0000FF 不等式约束 #0000FF
+   G = np.array([ [+1,0,0,0,0],
+                  [-1,0,0,0,0],
+                  [0,+1,0,0,0],
+                  [0,-1,0,0,0],
+                  [0,0,+1,0,0],
+                  [0,0,-1,0,0]]) 
+   h = np.array([ [+CoPTMaxX],
+                  [-CoPTMinX],
+                  [+CoPTMaxY],
+                  [-CoPTMinY],
+                  [+SigmaMax],
+                  [-SigmaMin]])
+
+   # TODO: use equation 13 and 16 to find the A and b  
+   #0000FF 等式约束 #0000FF
+   #0000FF 这里的等式约束，每迈一步腿就会更新一次
+   # 注意：这里的 CoM0 = CoP0
+   # A = np.array([[1,0,CoM0[0]-DCM0[0],1,0],
+   #               [0,1,CoM0[1]-DCM0[1],0,1]]) 
+   # b = np.array([[CoM0[0]],
+   #               [CoM0[1]]]) 
+   A = np.array([[1,0,CoPX-currentDCM[0],1,0],
+                 [0,1,CoPY-currentDCM[1],0,1]]) # TODO: use equation 13 and 16 to find the A and b 
+   b = np.array([[CoPX],
+                 [CoPY]])                  # TODO: use equation 13 and 16 to find the A and b
+   
+   #solve QP problem U is the vector of optimized parameters
+   U = solve_qp(P, q, G, h, A, b, solver="osqp")
+   Ux_planned.append(U[0])
+   Uy_planned.append(U[1])
+   stepDuration = np.log(U[2])/DCMGenerator.omega #TODO: ✔ find the step duration based on the the optimized sigma (use Log function to find step duration) 计算实际迈步时长
+   
+   #FFFFFF 添加用于监测 stepDuration_list 与 dt
+   stepDuration_list.append(stepDuration) 
+   dt_list.append(dt) #(dt*internalStep)        
+
+   FootRecovery = FootTrajectoryRecovery((stepDuration + dt * internalStep), maximumFootHeight) ##### 实例化 Class 类
+   CoMRealTrajectory.append(np.asarray(realCoM))
+    
+   if sign ==1:#right foot is in contact with the ground (left is swing foot)
+      leftFootFinalPosition[0][:] = np.array([U[0] ,U[1],0.0]).copy()
+       
+      leftFootPosition = FootRecovery.getSwingFootTrajectory(footPoseStart=leftFootStartPosition,footPoseEnd=leftFootFinalPosition,time=dt*internalStep)
+      leftFootOrientation = np.eye(3)
+      rightFootPosition = rightFootStartPosition[0].copy()
+      rightFootOrientation = rightFootStartOrientation.copy()
+       
+      rightFootTraj_x.append(rightFootPosition[0])
+      rightFootTraj_y.append(rightFootPosition[1])
+      leftFootTraj_x.append(leftFootFinalPosition[0][0])
+      leftFootTraj_y.append(leftFootFinalPosition[0][1])
+
+   else:#left foot is in contact with the ground   (right is swing foot)
+      rightFootFinalPosition[0][:] = np.array([U[0] ,U[1],0.0]).copy()
+       
+      rightFootPosition = FootRecovery.getSwingFootTrajectory(footPoseStart=rightFootStartPosition,footPoseEnd=rightFootFinalPosition,time=dt*internalStep)
+      rightFootOrientation = np.eye(3)
+      leftFootPosition = leftFootStartPosition[0].copy()
+      leftFootOrientation = leftFootStartOrientation.copy()
+       
+      rightFootTraj_x.append(rightFootFinalPosition[0][0])
+      rightFootTraj_y.append(rightFootFinalPosition[0][1])
+      leftFootTraj_x.append(leftFootPosition[0])
+      leftFootTraj_y.append(leftFootPosition[1])
+   
+   lowerBodyJoints = AtlasUtils.doInverseKinematics(DesiredCoM3d, np.eye(3),leftFootPosition, np.eye(3),rightFootPosition, np.eye(3))
+   prevLowerbodyJoints = lowerBodyJoints#keep the previous joint position to use in the case of double support
+   
+   jointsPositions[24:30] = lowerBodyJoints[6:12]
+   jointsPositions[18:24] = lowerBodyJoints[0:6]
+   
+   # apply joint position on the robot (it will automatically implement joint PD)
+   p.setJointMotorControlArray(bodyIndex=robotID,
+                              jointIndices=jointsIndex.astype(int),
+                              controlMode=p.POSITION_CONTROL,
+                              targetPositions = jointsPositions)
+   p.stepSimulation()
+   time.sleep(dt)  # 控制仿真时间间隔
+
+   DCMTrajectory.append(DesiredDCM)
+   CoMTrajectory.append(DesiredCoM.copy())
+   CoPTrajectory.append(np.array([CoPX,CoPY]))
+   ControlInputs.append(U)
+   
+   internalStep = internalStep+1 #is used for resetting the step parameters
+
+   #resetting step parameters when step duration is finished
+   #FFFFFF 修改部分 原先为 if(dt>stepDuration):
+   if(dt>stepDuration): 
+      stepNumber=stepNumber+1
+      if stepNumber ==14: # Stop after certain number of steps 
+         break
+
+      internalStep=0
+      CoMPoS, robotOrn =  p.getBasePositionAndOrientation(robotID) #TODO: ✔ receive the base position and orientation (use pybullet documentation for finding the related function) 
+      CoMVel,_ =  p.getBaseVelocity(robotID)                       #TODO: ✔ receive the base velocity  
+      DCM_step =  CoMPoS + np.asarray(CoMVel)/math.sqrt(9.81/CoMHeight) 
+      CoM_step = np.asarray(CoMPoS)
+      DCMGenerator.CoM = np.array([CoM_step[0] ,CoM_step[1]])
+      
+      if sign == 1: #right foot was in contact with the ground (will be used for getting CoP)
+         foot_index = 23
+      else: #left foot was in contact with the ground (will be used for getting CoP)
+         foot_index = 29
+
+      CoPX = p.getLinkState(robotID,foot_index)[0][0] #initial CoP position in X direction
+      CoPY = p.getLinkState(robotID,foot_index)[0][1] #initial CoP position in y direction
+      CoP_prev = DCMGenerator.CoP.copy()
+      DCMGenerator.CoP = np.array([CoPX ,CoPY])
+
+      DCMGenerator.initialDCM = DCM_step[:-1]
+      sign = sign*-1 # 会影响 CoP_Y
+
+      # Updating the start position of both legs 
+      leftFootStartPosition[0][:]  = [p.getLinkState(robotID,23)[0][0], p.getLinkState(robotID,23)[0][1],0]
+      rightFootStartPosition[0][:] = [p.getLinkState(robotID,29)[0][0], p.getLinkState(robotID,29)[0][1],0]
+      leftFootStartOrientation = R.from_quat(np.asarray(p.getLinkState(robotID,23)[1])).as_matrix()
+      rightFootStartOrientation = R.from_quat(np.asarray(p.getLinkState(robotID,29)[1])).as_matrix()
+
+#FFFFFF 录像功能
+#uncomment for video recording (another part of the code also should be uncommented)         
+# p.stopStateLogging(curr_recording)
