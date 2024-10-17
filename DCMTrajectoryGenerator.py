@@ -27,23 +27,16 @@ class DCMTrajectoryGenerator:
     # 使用 公式(3) x' = ω·(ξ-x)
     def getCoM(self):
         #This function generates the CoM trajectory by integration of CoM velocity(that has been found by the DCM values)
-
         self.CoMDot = self.omega * (self.DCM - self.CoM)   #TODO: use equation (3) in the project description
         self.CoM =  self.CoM + self.CoMDot * self.timeStep #TODO: Simple euler numerical integration
         self.CoMDotPrev = self.CoMDot
-
         return self.CoM
 
     # 返回 DCM 的位置
     # 使用 公式(9) ξ = (ξ0 - CoP0)·exp(ω·t) + CoP0
     def planDCMTrajectory(self,time): #The output of this function is DCM posiiton
         #TODO: use the equation 9 of the project description
-
         self.DCM = (self.initialDCM - self.CoP) * np.exp(self.omega * time) + self.CoP
-
-        # self.DCM = (self.initialDCM - self.CoP) * np.exp(self.omega * self.timeStep) + self.CoP # TODO
-        # [NOTE] The DCM there should be the exactly initial state (initialDCM), instead of the DCM of previous timestep.
-
         pass
 
     
