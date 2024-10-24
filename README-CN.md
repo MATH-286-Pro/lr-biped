@@ -58,3 +58,14 @@
     - 发现问题为等式约束，等式约束每迈出一步会发生变化，并不是一直使用 initial DCM 和 CoP 的值
     - Part2 循环中 if 判断条件实际应该为 if(dt>stepDuration):
     - 完成行走任务
+- **2024.10.24 周四**
+  - 行走参数记录
+    ```
+    #00FF00 调参
+    NominalStepWidth  = 0.1  # Nominal lateralDistanceOfFeet/2                                          #00FF00 原先为 0.1
+    NominalStepLength = 0.7  # Nominal longitudinal distance between two sequential feet                #00FF00 原先为 0.5
+    NominalStepDuration = 0.3 #TODO tune Nominal step duration to find a value that push reovery works  #00FF00 原先为 0.4   行走速度变化，越小迈步时间越短
+
+    #00FF00 变更约束条件
+    GAP = 0.4
+    ```
